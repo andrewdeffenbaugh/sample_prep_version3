@@ -88,7 +88,6 @@
         font-weight: bold;
         cursor: pointer;
     }
-
 </style>
 </head>
 
@@ -136,21 +135,23 @@
 let data = {};
 const planSelect = document.getElementById("planSelect");
 
-// ✅ LOAD DATA FROM JSON
+// ✅ LOAD FROM data.json
 fetch("data.json")
     .then(res => res.json())
     .then(json => {
         data = json;
         loadPlans();
-        planSelect.selectedIndex = 0;
-        renderTable();
+        if (Object.keys(data).length > 0) {
+            planSelect.selectedIndex = 0;
+            renderTable();
+        }
     })
     .catch(err => {
-        alert("Error loading data.json. Make sure it exists in your repo.");
+        alert("Could not load data.json. Make sure it's in the repo.");
         console.error(err);
     });
 
-// Load plans into dropdown
+// Load plans
 function loadPlans() {
     planSelect.innerHTML = "";
     for (let plan in data) {
@@ -179,7 +180,7 @@ function renderTable() {
                     percent > 40 ? "#f59e0b" :
                                    "#ef4444";
 
-        let row = `
+        tbody.innerHTML += `
             <tr>
                 <td>
                     <input type="text" value="${tissue}"
@@ -210,8 +211,6 @@ function renderTable() {
                 </td>
             </tr>
         `;
-
-        tbody.innerHTML += row;
     }
 }
 
@@ -269,13 +268,13 @@ function deleteTissue(plan, tissue) {
     renderTable();
 }
 
-// Update data
+// Update values
 function updateData(plan, tissue, field, value) {
     data[plan][tissue][field] = parseInt(value) || 0;
     renderTable();
 }
 
-// ✅ EXPORT DATA FUNCTION
+// ✅ EXPORT FUNCTION
 function exportData() {
     const blob = new Blob([JSON.stringify(data, null, 2)], {
         type: "application/json"
@@ -291,4 +290,3 @@ function exportData() {
 
 </body>
 </html>
-``
