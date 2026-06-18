@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sample Prep Tracker</title>
+
+<style>
+    body {
+        font-family: "Segoe UI", Arial;
+        background: linear-gradient(135deg, #4f46e5, #3b82f6);
+        margin: 0;
+        padding: 30px;
+        color: #333;
+    }
+
+    h2 {
+        color: white;
+        margin-bottom: 20px;
+    }
+
+    .card {
+        background: white;
+        padding: 25px;
+        border-radius: 16px;
+        max-width: 900px;
+        margin: auto;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+
+    label {
+        font-weight: 600;
+    }
+
+    select, input, button {
+        padding: 8px;
+        border-radius: 8px;
+        border: 1px solid #ccc;
+        font-size: 14px;
+    }
+
+    button {
+        background: #4f46e5;
+        color: white;
+        border: none;
+        cursor: pointer;
+        transition: 0.2s;
+    }
+
+    button:hover {
+        background: #3730a3;
+    }
+
+    .danger {
+        background: #ef4444;
+    }
+
+    .danger:hover {
+        background: #b91c1c;
+    }
+
+    table {
+        width: 100%;
+        margin-top: 15px;
+        border-collapse: collapse;
+    }
+
+    th {
+        background: #f1f5f9;
+    }
+
+    th, td {
+        padding: 10px;
+        border-bottom: 1px solid #ddd;
+        text-align: center;
+    }
+
+    tr:hover {
+        background: #f9fafb;
+    }
+
+    input[type="text"] {
+        width: 130px;
+    }
+
+    input[type="number"] {
+        width: 80px;
+    }
+
+    .progress-bar {
+        height: 14px;
+        background: #e5e7eb;
+        border-radius: 10px;
+        overflow: hidden;
+    }
+
+    .progress {
+        height: 100%;
+        border-radius: 10px;
+    }
+
+    .delete-btn {
+        color: #ef4444;
+        font-weight: bold;
+        cursor: pointer;
+    }
+
+    .controls {
+        margin-bottom: 15px;
+    }
+
+</style>
+</head>
+
+<body>
+
+<h2>🧪 Production Plan Sample Prep Tracker</h2>
+
+<div class="card">
+
+    <div class="controls">
+        <label>Production Plan:</label><br>
+        <select id="planSelect" onchange="renderTable()"></select>
+
+        <button onclick="addPlan()">+ Add Plan</button>
+        <button class="danger" onclick="deletePlan()">Remove Plan</button>
+    </div>
+
+    <div class="controls">
+        <input type="text" id="newTissue" placeholder="New Tissue Type">
+        <button onclick="addTissue()">Add Tissue</button>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Tissue</th>
+                <th>Total</th>
+                <th>Prepared</th>
+                <th>Remaining</th>
+                <th>Progress</th>
+                <th>Delete</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+    </table>
+
+</div>
+
+<script>
+
+let data = {
+    "PP-1001": {
+        "Liver": { total: 100, prepped: 30 },
+        "Kidney": { total: 80, prepped: 20 }
+    }
+};
+
+// Load saved data
+if (localStorage.getItem("prepData")) {
+    data = JSON.parse(localStorage.getItem("prepData"));
+}
+
+const planSelect = document.getElementById("planSelect");
+
+// Load plans
+function loadPlans() {
+    planSelect.innerHTML = "";
+    for (let plan in data) {
+        let option = document.createElement("option");
+        option.value = plan;
+        option.text = plan;
+        planSelect.appendChild(option);
+    }
+}
+
+// Render table
+function renderTable() {
+    const plan = planSelect.value;
+    const tbody = document.getElementById("tableBody");
+    tbody.innerHTML = "";
+
+    if (!plan || !data[plan]) return;
+
+    for (let tissue in data[plan]) {
+        let t = data[plan][tissue];
+
+        let remaining = t.total - t.prepped;
+        let percent = t.total === 0 ? 0 : Math.round((t.prepped / t.total) * 100);
+
+        // ✅ Color logic
+        let color = percent > 75 ? "#22c55e" :
+                    percent > 40 ? "#f59e0b" :
+                                   "#ef4444";
+
+        let row = `
+            <tr>
+                <td>
+                    <input type="text" value="${tissue}"
+                    onchange="renameTissue('${plan}','${tissue}',this.value)">
+                </td>
+
+                <td>
+                    <input type="number" value="${t.total}"
+                    onchange="updateData('${plan}','${tissue}','total',this.value)">
+                </td>
+
+                <td>
+                    <input type="number" value="${t.prepped}"
+                    onchange="updateData('${plan}','${tissue}','prepped',this.value)">
+                </td>
+
+                <td>${remaining}</td>
+
+                <td>
+                    <strong>${percent}%</strong>
+                    <div class="progress-bar">
+                        <div class="progress" style="width:${percent}%; background:${color}"></div>
+                    </div>
+                </td>
+
+                <td>
+                    <span class="delete-btn" onclick="deleteTissue('${plan}','${tissue}')">✖</span>
+                </td>
+            </tr>
+        `;
+
+        tbody.innerHTML += row;
+    }
+
+    saveData();
+}
+
+// Add plan
+function addPlan() {
+    let name = prompt("Enter new Production Plan name:");
+    if (!name || data[name]) return;
+
+    data[name] = {};
+    loadPlans();
+    planSelect.value = name;
+    renderTable();
+}
+
+// Delete plan
+function deletePlan() {
+    let plan = planSelect.value;
+    if (!plan) return;
+
+    if (!confirm(`Delete ${plan}?`)) return;
+
+    delete data[plan];
+    loadPlans();
+
+    if (Object.keys(data).length > 0)
+        planSelect.selectedIndex = 0;
+
+    renderTable();
+}
+
+// Add tissue
+function addTissue() {
+    const plan = planSelect.value;
+    const name = document.getElementById("newTissue").value.trim();
+
+    if (!name || data[plan][name]) return;
+
+    data[plan][name] = { total: 0, prepped: 0 };
+    document.getElementById("newTissue").value = "";
+    renderTable();
+}
+
+// Rename tissue
+function renameTissue(plan, oldName, newName) {
+    if (!newName || oldName === newName) return;
+
+    data[plan][newName] = data[plan][oldName];
+    delete data[plan][oldName];
+    renderTable();
+}
+
+// Delete tissue
+function deleteTissue(plan, tissue) {
+    delete data[plan][tissue];
+    renderTable();
+}
+
+// Update data
+function updateData(plan, tissue, field, value) {
+    data[plan][tissue][field] = parseInt(value) || 0;
+    renderTable();
+}
+
+// Save
+function saveData() {
+    localStorage.setItem("prepData", JSON.stringify(data));
+}
+
+// Init
+loadPlans();
+planSelect.selectedIndex = 0;
+renderTable();
+
+</script>
+
+</body>
+</html>
+
+

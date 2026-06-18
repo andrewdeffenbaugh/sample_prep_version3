@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Sample Prep Status</title>
+
+<style>
+body {
+    font-family: Arial;
+    padding: 20px;
+    background: #f4f6f8;
+}
+.card {
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    max-width: 900px;
+    margin: auto;
+}
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+th, td {
+    padding: 10px;
+    border-bottom: 1px solid #ddd;
+    text-align: center;
+}
+.progress-bar {
+    height: 12px;
+    background: #ddd;
+    border-radius: 6px;
+}
+.progress {
+    height: 100%;
+}
+</style>
+</head>
+
+<body>
+
+<h2>Customer Sample Progress</h2>
+
+<div class="card">
+    <select id="planSelect" onchange="render()"></select>
+    <table>
+        <thead>
+            <tr>
+                <th>Tissue</th>
+                <th>Total</th>
+                <th>Prepared</th>
+                <th>Remaining</th>
+                <th>Progress</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+    </table>
+</div>
+
+<script>
+let data = {};
+
+fetch("data.json")
+.then(res => res.json())
+.then(json => {
+    data = json;
+
+    let select = document.getElementById("planSelect");
+    for (let plan in data) {
+        let opt = document.createElement("option");
+        opt.value = plan;
+        opt.text = plan;
+        select.appendChild(opt);
+    }
+
+    render();
+});
+
+function render() {
+    let plan = document.getElementById("planSelect").value;
+    let tbody = document.getElementById("tableBody");
+    tbody.innerHTML = "";
+
+    for (let tissue in data[plan]) {
+        let t = data[plan][tissue];
+
+        let remaining = t.total - t.prepped;
+        let percent = Math.round((t.prepped / t.total) * 100) || 0;
+
+        let color = percent > 75 ? "green" :
+                    percent > 40 ? "orange" : "red";
+
+        tbody.innerHTML += `
+        <tr>
+            <td>${tissue}</td>
+            <td>${t.total}</td>
+            <td>${t.prepped}</td>
+            <td>${remaining}</td>
+            <td>
+                ${percent}%
+                <div class="progress-bar">
+                    <div class="progress" style="width:${percent}%; background:${color}"></div>
+                </div>
+            </td>
+        </tr>`;
+    }
+}
+</script>
+
+</body>
+</html>
+
