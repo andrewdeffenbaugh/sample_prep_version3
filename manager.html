@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Sample Prep Tracker</title>
+<title>Sample Prep Tracker (Manager)</title>
 
 <style>
     body {
@@ -27,15 +27,12 @@
         box-shadow: 0 10px 30px rgba(0,0,0,0.2);
     }
 
-    label {
-        font-weight: 600;
-    }
-
     select, input, button {
         padding: 8px;
         border-radius: 8px;
         border: 1px solid #ccc;
         font-size: 14px;
+        margin: 5px 5px 10px 0;
     }
 
     button {
@@ -74,18 +71,6 @@
         text-align: center;
     }
 
-    tr:hover {
-        background: #f9fafb;
-    }
-
-    input[type="text"] {
-        width: 130px;
-    }
-
-    input[type="number"] {
-        width: 80px;
-    }
-
     .progress-bar {
         height: 14px;
         background: #e5e7eb;
@@ -104,32 +89,32 @@
         cursor: pointer;
     }
 
-    .controls {
-        margin-bottom: 15px;
-    }
-
 </style>
 </head>
 
 <body>
 
-<h2>🧪 Production Plan Sample Prep Tracker</h2>
+<h2>🧪 Production Plan Sample Prep Tracker (Manager)</h2>
 
 <div class="card">
 
-    <div class="controls">
+    <!-- Controls -->
+    <div>
         <label>Production Plan:</label><br>
         <select id="planSelect" onchange="renderTable()"></select>
 
         <button onclick="addPlan()">+ Add Plan</button>
         <button class="danger" onclick="deletePlan()">Remove Plan</button>
+        <button onclick="exportData()">⬇ Export Data</button>
     </div>
 
-    <div class="controls">
+    <!-- Add Tissue -->
+    <div>
         <input type="text" id="newTissue" placeholder="New Tissue Type">
         <button onclick="addTissue()">Add Tissue</button>
     </div>
 
+    <!-- Table -->
     <table>
         <thead>
             <tr>
@@ -148,21 +133,24 @@
 
 <script>
 
-let data = {
-    "PP-1001": {
-        "Liver": { total: 100, prepped: 30 },
-        "Kidney": { total: 80, prepped: 20 }
-    }
-};
-
-// Load saved data
-if (localStorage.getItem("prepData")) {
-    data = JSON.parse(localStorage.getItem("prepData"));
-}
-
+let data = {};
 const planSelect = document.getElementById("planSelect");
 
-// Load plans
+// ✅ LOAD DATA FROM JSON
+fetch("data.json")
+    .then(res => res.json())
+    .then(json => {
+        data = json;
+        loadPlans();
+        planSelect.selectedIndex = 0;
+        renderTable();
+    })
+    .catch(err => {
+        alert("Error loading data.json. Make sure it exists in your repo.");
+        console.error(err);
+    });
+
+// Load plans into dropdown
 function loadPlans() {
     planSelect.innerHTML = "";
     for (let plan in data) {
@@ -187,7 +175,6 @@ function renderTable() {
         let remaining = t.total - t.prepped;
         let percent = t.total === 0 ? 0 : Math.round((t.prepped / t.total) * 100);
 
-        // ✅ Color logic
         let color = percent > 75 ? "#22c55e" :
                     percent > 40 ? "#f59e0b" :
                                    "#ef4444";
@@ -226,8 +213,6 @@ function renderTable() {
 
         tbody.innerHTML += row;
     }
-
-    saveData();
 }
 
 // Add plan
@@ -290,19 +275,20 @@ function updateData(plan, tissue, field, value) {
     renderTable();
 }
 
-// Save
-function saveData() {
-    localStorage.setItem("prepData", JSON.stringify(data));
-}
+// ✅ EXPORT DATA FUNCTION
+function exportData() {
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: "application/json"
+    });
 
-// Init
-loadPlans();
-planSelect.selectedIndex = 0;
-renderTable();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "data.json";
+    a.click();
+}
 
 </script>
 
 </body>
 </html>
-
-
+``
