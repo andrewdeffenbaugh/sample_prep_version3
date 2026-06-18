@@ -16,15 +16,24 @@
     h2 {
         color: white;
         margin-bottom: 20px;
+        text-align: center;
     }
 
     .card {
         background: white;
         padding: 25px;
         border-radius: 16px;
-        max-width: 900px;
+        max-width: 950px;
         margin: auto;
         box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+
+    .section {
+        margin-bottom: 18px;
+    }
+
+    label {
+        font-weight: 600;
     }
 
     select, input, button {
@@ -33,6 +42,14 @@
         border: 1px solid #ccc;
         font-size: 14px;
         margin: 5px 5px 10px 0;
+    }
+
+    input[type="text"], input[type="password"] {
+        min-width: 180px;
+    }
+
+    input[type="number"] {
+        width: 80px;
     }
 
     button {
@@ -55,6 +72,22 @@
         background: #b91c1c;
     }
 
+    .success {
+        background: #16a34a;
+    }
+
+    .success:hover {
+        background: #15803d;
+    }
+
+    .muted {
+        background: #64748b;
+    }
+
+    .muted:hover {
+        background: #475569;
+    }
+
     table {
         width: 100%;
         margin-top: 15px;
@@ -71,11 +104,16 @@
         text-align: center;
     }
 
+    tr:hover {
+        background: #f9fafb;
+    }
+
     .progress-bar {
         height: 14px;
         background: #e5e7eb;
         border-radius: 10px;
         overflow: hidden;
+        margin-top: 4px;
     }
 
     .progress {
@@ -87,6 +125,66 @@
         color: #ef4444;
         font-weight: bold;
         cursor: pointer;
+        font-size: 18px;
+    }
+
+    .status {
+        padding: 10px;
+        border-radius: 8px;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        font-size: 14px;
+        margin-top: 10px;
+    }
+
+    .status.good {
+        background: #ecfdf5;
+        border-color: #bbf7d0;
+        color: #166534;
+    }
+
+    .status.warn {
+        background: #fffbeb;
+        border-color: #fde68a;
+        color: #92400e;
+    }
+
+    .status.bad {
+        background: #fef2f2;
+        border-color: #fecaca;
+        color: #991b1b;
+    }
+
+    .summary {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+        margin-bottom: 18px;
+    }
+
+    .summary-card {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 12px;
+        text-align: center;
+    }
+
+    .summary-card strong {
+        display: block;
+        font-size: 22px;
+        margin-top: 4px;
+        color: #1e293b;
+    }
+
+    @media (max-width: 750px) {
+        .summary {
+            grid-template-columns: repeat(2, 1fr);
+        }
+
+        table {
+            font-size: 13px;
+        }
     }
 </style>
 </head>
@@ -97,23 +195,49 @@
 
 <div class="card">
 
-    <!-- Controls -->
-    <div>
+    <div class="section">
+        <label>GitHub Token:</label><br>
+        <input type="password" id="githubToken" placeholder="Paste GitHub token">
+        <button class="muted" onclick="saveTokenForSession()">Use Token</button>
+        <button class="muted" onclick="clearToken()">Clear Token</button>
+        <div id="tokenStatus" class="status warn">
+            Token not set. You can edit the page, but saving to GitHub requires a token.
+        </div>
+    </div>
+
+    <div class="section">
         <label>Production Plan:</label><br>
         <select id="planSelect" onchange="renderTable()"></select>
 
         <button onclick="addPlan()">+ Add Plan</button>
         <button class="danger" onclick="deletePlan()">Remove Plan</button>
-        <button onclick="exportData()">⬇ Export Data</button>
+        <button class="success" onclick="saveToGitHub()">💾 Save to GitHub</button>
     </div>
 
-    <!-- Add Tissue -->
-    <div>
+    <div class="summary">
+        <div class="summary-card">
+            Total Samples
+            <strong id="summaryTotal">0</strong>
+        </div>
+        <div class="summary-card">
+            Prepared
+            <strong id="summaryPrepared">0</strong>
+        </div>
+        <div class="summary-card">
+            Remaining
+            <strong id="summaryRemaining">0</strong>
+        </div>
+        <div class="summary-card">
+            Plan Progress
+            <strong id="summaryPercent">0%</strong>
+        </div>
+    </div>
+
+    <div class="section">
         <input type="text" id="newTissue" placeholder="New Tissue Type">
         <button onclick="addTissue()">Add Tissue</button>
     </div>
 
-    <!-- Table -->
     <table>
         <thead>
             <tr>
@@ -128,32 +252,120 @@
         <tbody id="tableBody"></tbody>
     </table>
 
+    <div id="saveStatus" class="status">
+        Loaded page. Make changes, then click “Save to GitHub.”
+    </div>
+
 </div>
 
 <script>
 
+/*
+    ================================
+    CONFIG SECTION — EDIT THESE
+    ================================
+*/
+
+const GITHUB_OWNER = "YOUR_GITHUB_USERNAME";
+const GITHUB_REPO = "sample-prep-tracker";
+const GITHUB_BRANCH = "main";
+const DATA_FILE_PATH = "data.json";
+
+/*
+    ================================
+    APP STATE
+    ================================
+*/
+
 let data = {};
+let hasUnsavedChanges = false;
+
 const planSelect = document.getElementById("planSelect");
+const saveStatus = document.getElementById("saveStatus");
+const tokenStatus = document.getElementById("tokenStatus");
 
-// ✅ LOAD FROM data.json
-fetch("data.json")
-    .then(res => res.json())
-    .then(json => {
-        data = json;
-        loadPlans();
-        if (Object.keys(data).length > 0) {
-            planSelect.selectedIndex = 0;
+/*
+    ================================
+    TOKEN HANDLING
+    ================================
+*/
+
+function getToken() {
+    return sessionStorage.getItem("githubToken") || "";
+}
+
+function saveTokenForSession() {
+    const token = document.getElementById("githubToken").value.trim();
+
+    if (!token) {
+        setTokenStatus("No token entered.", "bad");
+        return;
+    }
+
+    sessionStorage.setItem("githubToken", token);
+    document.getElementById("githubToken").value = "";
+    setTokenStatus("Token set for this browser session.", "good");
+}
+
+function clearToken() {
+    sessionStorage.removeItem("githubToken");
+    setTokenStatus("Token cleared. Saving to GitHub is disabled until a token is entered.", "warn");
+}
+
+function setTokenStatus(message, type) {
+    tokenStatus.textContent = message;
+    tokenStatus.className = "status " + type;
+}
+
+/*
+    ================================
+    LOAD DATA
+    ================================
+*/
+
+loadData();
+
+function loadData() {
+    fetch(DATA_FILE_PATH + "?cacheBust=" + Date.now())
+        .then(res => {
+            if (!res.ok) {
+                throw new Error("Could not load data.json");
+            }
+            return res.json();
+        })
+        .then(json => {
+            data = json;
+            loadPlans();
+
+            if (Object.keys(data).length > 0) {
+                planSelect.selectedIndex = 0;
+            }
+
             renderTable();
-        }
-    })
-    .catch(err => {
-        alert("Could not load data.json. Make sure it's in the repo.");
-        console.error(err);
-    });
+            setSaveStatus("Data loaded from data.json.", "good");
+        })
+        .catch(err => {
+            console.error(err);
+            data = {};
+            loadPlans();
+            renderTable();
+            setSaveStatus("Could not load data.json. Check that it exists in your repo.", "bad");
+        });
 
-// Load plans
+    if (getToken()) {
+        setTokenStatus("Token is set for this browser session.", "good");
+    }
+}
+
+/*
+    ================================
+    PLAN + TABLE RENDERING
+    ================================
+*/
+
 function loadPlans() {
     planSelect.innerHTML = "";
+
     for (let plan in data) {
         let option = document.createElement("option");
         option.value = plan;
@@ -162,19 +374,35 @@ function loadPlans() {
     }
 }
 
-// Render table
 function renderTable() {
     const plan = planSelect.value;
     const tbody = document.getElementById("tableBody");
     tbody.innerHTML = "";
 
-    if (!plan || !data[plan]) return;
+    if (!plan || !data[plan]) {
+        renderSummary(0, 0);
+        return;
+    }
+
+    let planTotal = 0;
+    let planPrepared = 0;
 
     for (let tissue in data[plan]) {
         let t = data[plan][tissue];
 
-        let remaining = t.total - t.prepped;
-        let percent = t.total === 0 ? 0 : Math.round((t.prepped / t.total) * 100);
+        let total = Number(t.total) || 0;
+        let prepped = Number(t.prepped) || 0;
+
+        if (prepped > total) {
+            prepped = total;
+            data[plan][tissue].prepped = total;
+        }
+
+        let remaining = total - prepped;
+        let percent = total === 0 ? 0 : Math.round((prepped / total) * 100);
+
+        planTotal += total;
+        planPrepared += prepped;
 
         let color = percent > 75 ? "#22c55e" :
                     percent > 40 ? "#f59e0b" :
@@ -183,18 +411,18 @@ function renderTable() {
         tbody.innerHTML += `
             <tr>
                 <td>
-                    <input type="text" value="${tissue}"
-                    onchange="renameTissue('${plan}','${tissue}',this.value)">
+                    <input type="text" value="${escapeHtml(tissue)}"
+                    onchange="renameTissue('${escapeJs(plan)}','${escapeJs(tissue)}',this.value)">
                 </td>
 
                 <td>
-                    <input type="number" value="${t.total}"
-                    onchange="updateData('${plan}','${tissue}','total',this.value)">
+                    <input type="number" min="0" value="${total}"
+                    onchange="updateData('${escapeJs(plan)}','${escapeJs(tissue)}','total',this.value)">
                 </td>
 
                 <td>
-                    <input type="number" value="${t.prepped}"
-                    onchange="updateData('${plan}','${tissue}','prepped',this.value)">
+                    <input type="number" min="0" value="${prepped}"
+                    onchange="updateData('${escapeJs(plan)}','${escapeJs(tissue)}','prepped',this.value)">
                 </td>
 
                 <td>${remaining}</td>
@@ -207,84 +435,263 @@ function renderTable() {
                 </td>
 
                 <td>
-                    <span class="delete-btn" onclick="deleteTissue('${plan}','${tissue}')">✖</span>
+                    <span class="delete-btn" onclick="deleteTissue('${escapeJs(plan)}','${escapeJs(tissue)}')">✖</span>
                 </td>
             </tr>
         `;
     }
+
+    renderSummary(planTotal, planPrepared);
 }
 
-// Add plan
+function renderSummary(total, prepared) {
+    const remaining = total - prepared;
+    const percent = total === 0 ? 0 : Math.round((prepared / total) * 100);
+
+    document.getElementById("summaryTotal").textContent = total;
+    document.getElementById("summaryPrepared").textContent = prepared;
+    document.getElementById("summaryRemaining").textContent = remaining;
+    document.getElementById("summaryPercent").textContent = percent + "%";
+}
+
+/*
+    ================================
+    EDITING FUNCTIONS
+    ================================
+*/
+
 function addPlan() {
     let name = prompt("Enter new Production Plan name:");
-    if (!name || data[name]) return;
+    if (!name) return;
+
+    name = name.trim();
+
+    if (!name) return;
+
+    if (data[name]) {
+        alert("That production plan already exists.");
+        return;
+    }
 
     data[name] = {};
     loadPlans();
     planSelect.value = name;
+    markUnsaved();
     renderTable();
 }
 
-// Delete plan
 function deletePlan() {
     let plan = planSelect.value;
     if (!plan) return;
 
-    if (!confirm(`Delete ${plan}?`)) return;
+    if (!confirm(`Delete ${plan}? This cannot be undone.`)) return;
 
     delete data[plan];
     loadPlans();
 
-    if (Object.keys(data).length > 0)
+    if (Object.keys(data).length > 0) {
         planSelect.selectedIndex = 0;
+    }
 
+    markUnsaved();
     renderTable();
 }
 
-// Add tissue
 function addTissue() {
     const plan = planSelect.value;
-    const name = document.getElementById("newTissue").value.trim();
+    const tissueInput = document.getElementById("newTissue");
+    const name = tissueInput.value.trim();
 
-    if (!name || data[plan][name]) return;
+    if (!plan) {
+        alert("Please create or select a production plan first.");
+        return;
+    }
+
+    if (!name) return;
+
+    if (data[plan][name]) {
+        alert("That tissue type already exists for this plan.");
+        return;
+    }
 
     data[plan][name] = { total: 0, prepped: 0 };
-    document.getElementById("newTissue").value = "";
+    tissueInput.value = "";
+
+    markUnsaved();
     renderTable();
 }
 
-// Rename tissue
 function renameTissue(plan, oldName, newName) {
-    if (!newName || oldName === newName) return;
+    newName = newName.trim();
+
+    if (!newName || oldName === newName) {
+        renderTable();
+        return;
+    }
+
+    if (data[plan][newName]) {
+        alert("That tissue type already exists for this plan.");
+        renderTable();
+        return;
+    }
 
     data[plan][newName] = data[plan][oldName];
     delete data[plan][oldName];
+
+    markUnsaved();
     renderTable();
 }
 
-// Delete tissue
 function deleteTissue(plan, tissue) {
+    if (!confirm(`Delete ${tissue}?`)) return;
+
     delete data[plan][tissue];
+
+    markUnsaved();
     renderTable();
 }
 
-// Update values
 function updateData(plan, tissue, field, value) {
-    data[plan][tissue][field] = parseInt(value) || 0;
+    let numberValue = parseInt(value) || 0;
+
+    if (numberValue < 0) numberValue = 0;
+
+    data[plan][tissue][field] = numberValue;
+
+    if (data[plan][tissue].prepped > data[plan][tissue].total) {
+        data[plan][tissue].prepped = data[plan][tissue].total;
+    }
+
+    markUnsaved();
     renderTable();
 }
 
-// ✅ EXPORT FUNCTION
-function exportData() {
-    const blob = new Blob([JSON.stringify(data, null, 2)], {
-        type: "application/json"
-    });
-
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "data.json";
-    a.click();
+function markUnsaved() {
+    hasUnsavedChanges = true;
+    setSaveStatus("Unsaved changes. Click “Save to GitHub” to publish updates.", "warn");
 }
+
+/*
+    ================================
+    SAVE TO GITHUB
+    ================================
+*/
+
+async function saveToGitHub() {
+    const token = getToken();
+
+    if (!token) {
+        setSaveStatus("Cannot save. Enter your GitHub token first.", "bad");
+        return;
+    }
+
+    if (GITHUB_OWNER === "YOUR_GITHUB_USERNAME") {
+        setSaveStatus("Update GITHUB_OWNER in the config section before saving.", "bad");
+        return;
+    }
+
+    setSaveStatus("Saving to GitHub...", "warn");
+
+    try {
+        const fileApiUrl =
+            `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${DATA_FILE_PATH}?ref=${GITHUB_BRANCH}`;
+
+        const getResponse = await fetch(fileApiUrl, {
+            method: "GET",
+            headers: {
+                "Authorization": `Bearer ${token}`,
+                "Accept": "application/vnd.github+json"
+            }
+        });
+
+        if (!getResponse.ok) {
+            throw new Error("Could not get current data.json from GitHub.");
+        }
+
+        const fileInfo = await getResponse.json();
+        const currentSha = fileInfo.sha;
+
+        const newContent = JSON.stringify(data, null, 2);
+        const encodedContent = toBase64Unicode(newContent);
+
+        const updateResponse = await fetch(
+            `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${DATA_FILE_PATH}`,
+            {
+                method: "PUT",
+                headers: {
+                    "Authorization": `Bearer ${token}`,
+                    "Accept": "application/vnd.github+json",
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    message: "Update sample prep tracking data",
+                    content: encodedContent,
+                    sha: currentSha,
+                    branch: GITHUB_BRANCH
+                })
+            }
+        );
+
+        if (!updateResponse.ok) {
+            const errorText = await updateResponse.text();
+            throw new Error(errorText);
+        }
+
+        hasUnsavedChanges = false;
+        setSaveStatus("Saved to GitHub successfully. Customer view can now refresh to see the latest data.", "good");
+
+    } catch (error) {
+        console.error(error);
+        setSaveStatus("Save failed. Check token permissions, repo name, owner, and branch.", "bad");
+    }
+}
+
+/*
+    ================================
+    HELPERS
+    ================================
+*/
+
+function setSaveStatus(message, type) {
+    saveStatus.textContent = message;
+    saveStatus.className = "status " + type;
+}
+
+function toBase64Unicode(str) {
+    const bytes = new TextEncoder().encode(str);
+    let binary = "";
+    const chunkSize = 0x8000;
+
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+        const chunk = bytes.subarray(i, i + chunkSize);
+        binary += String.fromCharCode.apply(null, chunk);
+    }
+
+    return btoa(binary);
+}
+
+function escapeHtml(value) {
+    return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+}
+
+function escapeJs(value) {
+    return String(value)
+        .replaceAll("\\", "\\\\")
+        .replaceAll("'", "\\'")
+        .replaceAll('"', '\\"');
+}
+
+window.addEventListener("beforeunload", function (event) {
+    if (hasUnsavedChanges) {
+        event.preventDefault();
+        event.returnValue = "";
+    }
+});
 
 </script>
 
